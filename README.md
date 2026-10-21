@@ -27,8 +27,9 @@ Decoder core (`3gpp/`, the 3GPP AMR-NB reference decoder) is unchanged.
 
 ### Online (GitHub Actions)
 
-Push to `main` (or trigger the workflow manually / push a `v*` tag) — the workflow
-downloads the official SDK archive, builds both architectures and uploads:
+The workflow is **manual-trigger only**: go to the *Actions* tab → *Build Component
+(x86 & x64)* → *Run workflow*. It downloads the official SDK archive, builds both
+architectures and uploads:
 
 - `foo_input_amr_x86` / `foo_input_amr_x64` — the raw DLLs
 - `foo_input_amr_component` — a ready-to-install `foo_input_amr.fb2k-component`
