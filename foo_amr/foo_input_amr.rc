@@ -47,7 +47,7 @@ BEGIN
             VALUE "FileDescription", "Adaptive Multirate decoder for foobar2000"
             VALUE "FileVersion", "1, 2, 0, 0"
             VALUE "InternalName", "foo_input_amr"
-            VALUE "LegalCopyright", "https://github.com/unjello/foo_input_amr/; 2003-2018: Andrzej Lichnerowicz, Quang Nguyen"
+            VALUE "LegalCopyright", "https://github.com/a1waysbeta/foo_input_amr/; 2003-2018: Andrzej Lichnerowicz, Quang Nguyen"
             VALUE "OriginalFilename", "foo_input_amr.dll"
             VALUE "ProductName", "Adaptive Multirate decoder for foobar2000"
             VALUE "ProductVersion", "1, 2, 0, 0"

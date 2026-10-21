@@ -91,7 +91,7 @@ protected:
 		static char head[5];
 		
 		/* read the magic string from the file */
-		int read = m_file->read(head, 5, p_abort);
+		t_size read = m_file->read(head, 5, p_abort);
 		/* seek back to the begining */
 		m_file->seek(0, p_abort);
 		
@@ -199,7 +199,7 @@ public:
 	void get_info(file_info & p_info,abort_callback & p_abort) {
 		AMR_DEBUG("Get info");
 
-		p_info.set_length((double)m_frames*amr_audio_frame_size/amr_sample_rate);
+		p_info.set_length((double)m_frames*(int)amr_audio_frame_size/(int)amr_sample_rate);
 		p_info.info_set_bitrate((amr_bits_per_sample * amr_channels * amr_sample_rate + 500 /* rounding for bps to kbps*/ ) / 1000 /* bps to kbps */);
 		p_info.info_set_int("samplerate",amr_sample_rate);
 		p_info.info_set_int("channels",amr_channels);
@@ -329,6 +329,8 @@ public:
 	void decode_on_idle(abort_callback & p_abort) {m_file->on_idle(p_abort);}
 	/* no fancy stuff */
 	void retag(const file_info & p_info,abort_callback & p_abort) {throw exception_tagging_unsupported();}
+	/* removing tags is a write operation as well. we do not support that, so throw an error */
+	void remove_tags(abort_callback & p_abort) {throw exception_tagging_unsupported();}
 	
 	/* identify amr by content type */
 	static bool g_is_our_content_type(const char * p_content_type) {
@@ -371,7 +373,7 @@ const unsigned input_amr::m_start = 7;
  * @{
  */
 static input_singletrack_factory_t<input_amr> g_input_amr_factory;
-DECLARE_COMPONENT_VERSION("AMR input","1.2.0","https://github.com/unjello/foo_input_amr/; 2003-2018: Andrzej Lichnerowicz, Quang Nguyen\nPowered GSM AMR-NB speech codec\n(c) 2001, 3gpp");
+DECLARE_COMPONENT_VERSION("AMR input","1.2.0","https://github.com/a1waysbeta/foo_input_amr/; 2003-2018: Andrzej Lichnerowicz, Quang Nguyen\nPowered GSM AMR-NB speech codec\n(c) 2001, 3gpp");
 DECLARE_FILE_TYPE("Adaptive Multirate files","*.AMR");
 /**
  * @}
