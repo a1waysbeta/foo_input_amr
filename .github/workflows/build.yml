@@ -1,0 +1,183 @@
+name: Build Component (x86 & x64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+# =============================================================================
+# 1. Build x86 + x64 (matrix)
+# =============================================================================
+  build-multi-platform:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        platform: [x86, x64]
+        include:
+          - platform: x86
+            msbuild_platform: Win32
+          - platform: x64
+            msbuild_platform: x64
+
+    steps:
+    # -------------------------------------------------------------------------
+    # 1. Checkout plugin source
+    # -------------------------------------------------------------------------
+    - name: Checkout foo_input_amr
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    # -------------------------------------------------------------------------
+    # 2. Fetch foobar2000 SDK (official release archive, same content as the
+    #    local "foobar2000 SDK-2026-10-01" folder) and extract it to ./sdk
+    #    Layout: sdk/pfc, sdk/foobar2000/SDK, sdk/foobar2000/foobar2000_component_client
+    #    7z is preinstalled on the windows-2022 runner image.
+    # -------------------------------------------------------------------------
+    - name: Download and extract foobar2000 SDK 2026-10-01
+      shell: pwsh
+      run: |
+        $sdkUrl = "https://www.foobar2000.org/downloads/SDK-2026-10-01.7z"
+        $zip = "$env:TEMP\fb2k_sdk.7z"
+        Invoke-WebRequest -Uri $sdkUrl -OutFile $zip
+        7z x $zip -o"$env:TEMP\fb2k_sdk" -y | Out-Null
+        if (-not (Test-Path "$env:TEMP\fb2k_sdk\pfc\pfc.vcxproj")) {
+          Write-Host "::error::pfc not found in official SDK archive"
+          exit 1
+        }
+        New-Item -ItemType Directory -Force -Path sdk | Out-Null
+        Get-ChildItem "$env:TEMP\fb2k_sdk" | ForEach-Object {
+          Copy-Item $_.FullName -Destination "sdk\" -Recurse -Force
+        }
+        if (-not (Test-Path "sdk\foobar2000\SDK\foobar2000_SDK.vcxproj")) {
+          Write-Host "::error::foobar2000_SDK.vcxproj not found after extraction"
+          exit 1
+        }
+        Write-Host "SDK layout:"
+        Get-ChildItem sdk | Select-Object -ExpandProperty Name
+
+    # -------------------------------------------------------------------------
+    # 3. Build environment
+    # -------------------------------------------------------------------------
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    # -------------------------------------------------------------------------
+    # 4. Build SDK dependencies + the component.
+    #    All four msbuild invocations share the same OutDir so that the
+    #    referenced dependency projects are not rebuilt a second time when
+    #    foo_amr.vcxproj is compiled.
+    # -------------------------------------------------------------------------
+    - name: Build PFC (${{ matrix.platform }})
+      shell: cmd
+      run: |
+        msbuild sdk\pfc\pfc.vcxproj ^
+          /p:Configuration=Release ^
+          /p:Platform=${{ matrix.msbuild_platform }} ^
+          /p:OutDir=${{ github.workspace }}\bin\${{ matrix.platform }}\
+
+    - name: Build Foobar2000 SDK (${{ matrix.platform }})
+      shell: cmd
+      run: |
+        msbuild sdk\foobar2000\SDK\foobar2000_SDK.vcxproj ^
+          /p:Configuration=Release ^
+          /p:Platform=${{ matrix.msbuild_platform }} ^
+          /p:OutDir=${{ github.workspace }}\bin\${{ matrix.platform }}\
+
+    - name: Build Foobar2000 Component Client (${{ matrix.platform }})
+      shell: cmd
+      run: |
+        msbuild sdk\foobar2000\foobar2000_component_client\foobar2000_component_client.vcxproj ^
+          /p:Configuration=Release ^
+          /p:Platform=${{ matrix.msbuild_platform }} ^
+          /p:OutDir=${{ github.workspace }}\bin\${{ matrix.platform }}\
+
+    - name: Build foo_input_amr (${{ matrix.platform }})
+      shell: cmd
+      run: |
+        msbuild foo_amr\foo_amr.vcxproj ^
+          /p:Configuration=Release ^
+          /p:Platform=${{ matrix.msbuild_platform }} ^
+          /p:OutDir=${{ github.workspace }}\bin\${{ matrix.platform }}\
+
+    # -------------------------------------------------------------------------
+    # 5. Sanity check: verify the DLL exists and has the expected PE machine
+    #    type (0x14c = i386/x86, 0x8664 = x64).
+    # -------------------------------------------------------------------------
+    - name: Verify DLL (${{ matrix.platform }})
+      shell: pwsh
+      run: |
+        $dll = "bin\${{ matrix.platform }}\foo_input_amr.dll"
+        if (-not (Test-Path $dll)) {
+          Write-Host "::error::$dll was not produced"
+          exit 1
+        }
+        $bytes = [System.IO.File]::ReadAllBytes($dll)
+        $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+        $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+        $expected = if ("${{ matrix.platform }}" -eq "x86") { 0x14c } else { 0x8664 }
+        Write-Host "$dll : $([math]::Round($bytes.Length/1KB,1)) KB, machine=0x$($machine.ToString('X4'))"
+        if ($machine -ne $expected) {
+          Write-Host "::error::unexpected PE machine type 0x$($machine.ToString('X4')), expected 0x$($expected.ToString('X4'))"
+          exit 1
+        }
+
+    - name: Upload DLL (${{ matrix.platform }})
+      uses: actions/upload-artifact@v7
+      with:
+        name: foo_input_amr_${{ matrix.platform }}
+        path: bin/${{ matrix.platform }}/foo_input_amr.dll
+        if-no-files-found: error
+
+# =============================================================================
+# 2. Package -> ONE fb2k-component
+#    32-bit DLL at the root, 64-bit DLL under x64\ (fb2k component layout)
+# =============================================================================
+  package:
+    runs-on: windows-2022
+    needs: build-multi-platform
+    name: Package fb2k-component
+
+    steps:
+    - name: Download x86 DLL
+      uses: actions/download-artifact@v8
+      with:
+        name: foo_input_amr_x86
+        path: component
+
+    - name: Download x64 DLL
+      uses: actions/download-artifact@v8
+      with:
+        name: foo_input_amr_x64
+        path: component\x64
+
+    - name: Verify structure
+      shell: cmd
+      run: |
+        echo ===== component structure =====
+        dir component /s
+
+    - name: Create fb2k-component
+      shell: powershell
+      run: |
+        Compress-Archive `
+          -Path "component\*" `
+          -DestinationPath "foo_input_amr.zip" `
+          -CompressionLevel Optimal
+
+        Rename-Item `
+          -Path "foo_input_amr.zip" `
+          -NewName "foo_input_amr.fb2k-component"
+
+    - name: Upload final component
+      uses: actions/upload-artifact@v7
+      with:
+        name: foo_input_amr_component
+        path: foo_input_amr.fb2k-component
+        if-no-files-found: error

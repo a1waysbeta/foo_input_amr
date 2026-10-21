@@ -1,0 +1,18 @@
+# Build output (produced by local MSBuild or CI)
+bin/
+x64/
+Win32/
+Debug/
+Release/
+
+# foobar2000 SDK is downloaded on demand (see setup-sdk.ps1 / CI workflow), never committed
+sdk/
+
+# Visual Studio / MSBuild
+.vs/
+*.user
+*.suo
+
+# OS clutter
+Thumbs.db
+desktop.ini
